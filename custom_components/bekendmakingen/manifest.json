@@ -1,0 +1,9 @@
+{
+  "domain": "bekendmakingen",
+  "name": "Bekendmakingen",
+  "config_flow": true,
+  "documentation": "https://github.com/Malosaaa/ha-bekendmakingen",
+  "requirements": ["feedparser==6.0.11"],
+  "iot_class": "cloud_polling",
+  "version": "1.1.0"
+}
