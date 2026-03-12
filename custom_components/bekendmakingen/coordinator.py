@@ -23,7 +23,9 @@ class BekendmakingenCoordinator(DataUpdateCoordinator):
         self.url = f"https://zoek.officielebekendmakingen.nl/rss?q={safe_query}"
         
         self.cache = BekendmakingenCache(hass, self.municipality)
-        self.last_data = self.cache.load_cache()
+        
+        # FIX 1: Start met een lege lijst, de cache wordt via __init__.py op de achtergrond ingeladen
+        self.last_data = []
         self.last_update_success_timestamp = None
         self.error_count = 0
         
@@ -54,6 +56,14 @@ class BekendmakingenCoordinator(DataUpdateCoordinator):
             
         return False
 
+    def _write_debug_file_sync(self, debug_path, content):
+        """Helper functie om het wegschrijven synchroon uit te voeren in een executor."""
+        try:
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            _LOGGER.error("Could not write debug file: %s", e)
+
     async def _async_update_data(self):
         _LOGGER.debug("Fetching Bekendmakingen RSS for %s", self.municipality)
         try:
@@ -62,14 +72,11 @@ class BekendmakingenCoordinator(DataUpdateCoordinator):
                 response.raise_for_status()
                 xml = await response.text()
                 
-                # Debug File Writer
+                # FIX 2: Debug File Writer verplaatst naar de achtergrond (executor job)
                 current_dir = os.path.dirname(__file__)
                 debug_path = os.path.join(current_dir, f"bekendmakingen_debug_{self.municipality}.txt")
-                try:
-                    with open(debug_path, "w", encoding="utf-8") as f:
-                        f.write(f"FETCHED URL:\n{self.url}\n\nSTATUS CODE:\n{response.status}\n\nRAW DATA RETURNED:\n{xml}")
-                except Exception as e:
-                    _LOGGER.error("Could not write debug file: %s", e)
+                debug_content = f"FETCHED URL:\n{self.url}\n\nSTATUS CODE:\n{response.status}\n\nRAW DATA RETURNED:\n{xml}"
+                await self.hass.async_add_executor_job(self._write_debug_file_sync, debug_path, debug_content)
                 
                 feed = await asyncio.to_thread(feedparser.parse, xml)
                 
@@ -96,7 +103,8 @@ class BekendmakingenCoordinator(DataUpdateCoordinator):
                 
                 if announcements:
                     self.last_data = announcements
-                    self.cache.save_cache(announcements)
+                    # FIX 3: Sla de cache op in de achtergrond
+                    await self.hass.async_add_executor_job(self.cache.save_cache, announcements)
                 
                 self.last_update_success_timestamp = dt_util.utcnow()
                 self.error_count = 0
